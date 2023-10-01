@@ -1,0 +1,39 @@
+{
+    "C_Cpp.default.compilerPath": "g++",
+    "C_Cpp.default.cppStandard": "c++17",
+    "C_Cpp.default.cStandard": "c17",
+    "C_Cpp.default.defines": [
+        ""
+    ],
+    "files.associations": {
+        "*.cc": "cpp",
+        "optional": "cpp",
+        "ratio": "cpp",
+        "system_error": "cpp",
+        "array": "cpp",
+        "functional": "cpp",
+        "tuple": "cpp",
+        "type_traits": "cpp",
+        "utility": "cpp",
+        "__bit_reference": "cpp",
+        "__functional_base": "cpp",
+        "__node_handle": "cpp",
+        "algorithm": "cpp",
+        "bitset": "cpp",
+        "chrono": "cpp",
+        "deque": "cpp",
+        "__memory": "cpp",
+        "iterator": "cpp",
+        "limits": "cpp",
+        "locale": "cpp",
+        "memory": "cpp",
+        "random": "cpp",
+        "vector": "cpp",
+        "freestand.h": "c",
+        "keyb.h": "c",
+        "seg7.h": "c",
+        "io.h": "c",
+        "calc.h": "c",
+        "assert.h": "c"
+    }
+}
