@@ -46,6 +46,26 @@ size_t strspn(char const *s, char const *allowed)
     return i;
 }
 
+#ifdef HAVE_LIBGCC
+divmod signed_divmod(int64_t numerator, int64_t denominator)
+{
+    divmod r = { 
+        denominator ? numerator / denominator : 0,
+        denominator ? numerator % denominator : 0,
+        !denominator
+    };
+    return r;
+}
+udivmod unsigned_divmod(uint64_t numerator, uint64_t denominator)
+{
+    udivmod r = {
+        denominator ? numerator / denominator : 0,
+        denominator ? numerator % denominator : 0,
+        !denominator
+    };
+    return r;
+}
+#else
 udivmod unsigned_divmod(uint64_t numerator, uint64_t denominator)
 {
     udivmod result = { 0, 0, 0 };
@@ -86,3 +106,4 @@ divmod signed_divmod(int64_t signed_numerator, int64_t signed_denominator)
 
     return s;
 }
+#endif

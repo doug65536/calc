@@ -39,7 +39,7 @@ $$(foreach src,$$(filter %.c,$$($(1)_SRCS)),$$(eval $$(call \
 	compile_c,$(2),$$(src))))
 
 $(2): $$(patsubst %.c,$$(call tolower,$(1))-%.o,$$($(1)_SRCS))
-	$$(CC) -o $$@ $$(CFLAGS) $$(LDFLAGS) $$^
+	$$(CC) -o $$@ $$(CFLAGS) $$^ $$(LDFLAGS)
 ifeq ($(VERBOSE),1)
 $$(info Generated link $(2): $$(patsubst %.c,$$(call tolower,$(1))-%.o,$$($(1)_SRCS)))
 endif
@@ -52,7 +52,9 @@ endef
 # $(4): variable
 # $(5): operator
 define setflagsof=
+ifeq ($(VERBOSE),1)
 $$(info setting flags: $(1)-$$(patsubst %.c,%.o,$(2)): $(4) $(5) $(3))
+endif
 $(1)-$$(patsubst %.c,%.o,$(2)): $(4) $(5) $(3)
 endef
 
@@ -76,9 +78,24 @@ FWCALC_SRCS = calc.c freestand.c seg7.c keyb.c staticmem.c
 LISTS = testdynamic teststatic fwcalc
 
 ARM_CC = arm-none-eabi-gcc
+ARM_OBJDUMP = arm-none-eabi-objdump
+
+USE_LIBGCC = 1
+
+ifeq ($(USE_LIBGCC),1)
+ARM_LIBGCC = $(shell $(ARM_CC) -mcpu=cortex-m0 -print-libgcc-file-name)
+endif
+
+LINKER_SCRIPT_OPTION = -Wl,-Tcortex-m0.ld
 
 $(eval $(call adjvar,fwcalc,-ffreestanding,CFLAGS,+=))
 $(eval $(call adjvar,fwcalc,-nostdlib,CFLAGS,+=))
+$(eval $(call adjvar,fwcalc,-mcpu=cortex-m0,CFLAGS,+=))
+ifeq ($(USE_LIBGCC),1)
+$(eval $(call adjvar,fwcalc,$$(ARM_LIBGCC),LDFLAGS,+=))
+$(eval $(call adjvar,fwcalc,$$(LINKER_SCRIPT_OPTION),LDFLAGS,+=))
+$(eval $(call adjvar,fwcalc,-DHAVE_LIBGCC=1,CFLAGS,+=))
+endif
 $(eval $(call adjvar,fwcalc,$(ARM_CC),CC,=))
 
 $(foreach list,$(LISTS),$(eval $(call \
@@ -92,7 +109,10 @@ test: teststatic testdynamic test1.expr test2.expr
 	./testdynamic test1.expr
 	./testdynamic test2.expr
 
+disassemble: fwcalc
+	$(ARM_OBJDUMP) -S fwcalc
+
 clean:
 	rm -f $(EXEFILES) $(OBJFILES) $(DEPFILES)
 
-.PHONY: all clean test
+.PHONY: all clean test disasemble
