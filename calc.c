@@ -235,6 +235,76 @@ static token_list shunting_yard(token_list const *infix_tokens)
     return output;
 }
 
+static int64_t number_add(N const *lhs_val, N const *rhs_val)
+{
+    return *lhs_val + *rhs_val;
+}
+
+static int64_t number_sub(N const *lhs_val, N const *rhs_val)
+{
+    return *lhs_val - *rhs_val;
+}
+
+static int64_t number_mul(N const *lhs_val, N const *rhs_val, 
+    uint8_t use_signed)
+{
+#ifndef BIG_UC
+    unsigned char const *lhs_bytes = (unsigned char const *)lhs_val;
+    unsigned char const *rhs_bytes = (unsigned char const *)rhs_val;
+
+    N total = 0;
+    unsigned char *total_bytes = (unsigned char *)&total;
+
+    // Convert 0/1 to all zeros or all ones
+    use_signed = -use_signed;
+
+    // Do it like elementary school, in 8x8=16 bit chunks
+    for (uint8_t bp = 0; bp < sizeof(N); ++bp) {
+        for (uint8_t tp = 0; tp < sizeof(N); ++tp) {
+            uint8_t p = bp + tp;
+            if (p >= sizeof(total))
+                break;
+            uint16_t sub_product = lhs_bytes[tp] * rhs_bytes[bp];
+            uint8_t oldv = total_bytes[p];
+            uint8_t newv = oldv + (sub_product & 0xFF);
+            uint8_t c = newv < oldv;
+            ++p;
+            oldv = total_bytes[p];
+            newv = oldv + (sub_product >> 8) + c;
+            total_bytes[p] = newv;
+            ++p;
+            uint8_t sign_extend = use_signed & -(sub_product >> 15);
+            for (c = newv < oldv; (c || sign_extend) && 
+                    p < sizeof(total); ++p) {
+                oldv = total_bytes[p];
+                newv = oldv + sign_extend + c;
+                c = newv < oldv;
+                total_bytes[p] = newv;
+            }
+        }
+    }
+    return total;
+#else
+    return *lhs_val * *rhs_val;
+#endif
+}
+
+static int64_t number_div(N const *lhs_val, N const *rhs_val)
+{
+    if (*rhs_val != 0) {
+        divmod result = signed_divmod(
+            *lhs_val, *rhs_val);
+        if (!result.err) {
+            return result.quot;
+        } else {
+            calc_err = 1;
+        }
+    } else{
+        calc_err = 1;
+    }
+    return INT64_MAX;
+}
+
 static N execute_rpn(token_list const *rpn_tokens, int *err)
 {
     *err = 0;
@@ -257,29 +327,20 @@ static N execute_rpn(token_list const *rpn_tokens, int *err)
                 lhs_val = pop_token_list(&execution_stack);
 
             N value;
-            switch (t->data) {
+            switch ((char)t->data) {
                 case '+':
-                    value = lhs_val->data + rhs_val->data;
+                    value = number_add(&lhs_val->data, &rhs_val->data);
                     break;
                 case '-':
-                    value = lhs_val->data - rhs_val->data;
+                    value = number_sub(&lhs_val->data, &rhs_val->data);
                     break;
                 case '*':
-                    value = lhs_val->data * rhs_val->data;
+                    value = number_mul(&lhs_val->data, &rhs_val->data);
                     break;
                 case '/':
-                    if (rhs_val->data != 0) {
-                        divmod result = signed_divmod(
-                            lhs_val->data, rhs_val->data);
-                        if (!result.err) {
-                            value = result.quot;
-                        } else {
-                            *err = 1;
-                        }
-                    } else{
-                        *err = 1;
-                    }
+                    value = number_div(&lhs_val->data, &rhs_val->data);
                     break;
+            
                 case 'N':
                     value = -rhs_val->data;
                     break;                    
