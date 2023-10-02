@@ -335,7 +335,7 @@ static N execute_rpn(token_list const *rpn_tokens, int *err)
                     value = number_sub(&lhs_val->data, &rhs_val->data);
                     break;
                 case '*':
-                    value = number_mul(&lhs_val->data, &rhs_val->data);
+                    value = number_mul(&lhs_val->data, &rhs_val->data, 1);
                     break;
                 case '/':
                     value = number_div(&lhs_val->data, &rhs_val->data);
