@@ -89,6 +89,7 @@ endif
 LINKER_SCRIPT_OPTION = -Wl,-Tcortex-m0.ld
 
 $(eval $(call adjvar,fwcalc,-ffreestanding,CFLAGS,+=))
+$(eval $(call adjvar,fwcalc,-Dmemcpy=__builtin_memcpy,CFLAGS,+=))
 $(eval $(call adjvar,fwcalc,-nostdlib,CFLAGS,+=))
 $(eval $(call adjvar,fwcalc,-mcpu=cortex-m0,CFLAGS,+=))
 ifeq ($(USE_LIBGCC),1)
