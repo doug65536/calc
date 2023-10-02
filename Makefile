@@ -1,6 +1,7 @@
 .SUFFIXES:
 
-CFLAGS = -g -W -Wall -Wextra -Wmissing-prototypes
+CFLAGS ?=
+CFLAGS := -g -W -Wall -Wextra -Wmissing-prototypes $(CFLAGS)
 DEPFLAGS = -MMD -MP
 VERBOSE ?=
 DEPFILES =
