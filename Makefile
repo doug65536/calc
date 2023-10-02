@@ -80,7 +80,7 @@ LISTS = testdynamic teststatic fwcalc
 ARM_CC = arm-none-eabi-gcc
 ARM_OBJDUMP = arm-none-eabi-objdump
 
-USE_LIBGCC = 1
+USE_LIBGCC = 0
 
 ifeq ($(USE_LIBGCC),1)
 ARM_LIBGCC = $(shell $(ARM_CC) -mcpu=cortex-m0 -print-libgcc-file-name)
