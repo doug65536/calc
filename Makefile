@@ -115,4 +115,4 @@ disassemble: fwcalc
 clean:
 	rm -f $(EXEFILES) $(OBJFILES) $(DEPFILES)
 
-.PHONY: all clean test disasemble
+.PHONY: all clean test disassemble
