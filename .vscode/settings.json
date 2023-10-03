@@ -34,6 +34,7 @@
         "seg7.h": "c",
         "io.h": "c",
         "calc.h": "c",
-        "assert.h": "c"
+        "assert.h": "c",
+        "cstdint": "c"
     }
 }
