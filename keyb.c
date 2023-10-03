@@ -66,3 +66,10 @@ void reopen_arg(int argc, char const * const * argv)
     (void)argc;
     (void)argv;
 }
+
+void abort()
+{
+    while(1) {
+        __asm__ __volatile__ ("nop");
+    }
+}
