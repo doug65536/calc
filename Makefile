@@ -86,6 +86,7 @@ LISTS = testdynamic teststatic fwcalc
 
 ARM_CC = arm-none-eabi-gcc
 ARM_OBJDUMP = arm-none-eabi-objdump
+ARM_M0_QEMU = qemu-system-arm
 
 USE_LIBGCC = 0
 
@@ -123,7 +124,13 @@ test: teststatic testdynamic test1.expr test2.expr
 disassemble: fwcalc
 	$(ARM_OBJDUMP) -S fwcalc
 
+qemu-debug-m0: fwcalc
+	$(ARM_M0_QEMU) -M microbit -cpu cortex-m0 -kernel $^ -s -S
+
+gdb-debug-m0: fwcalc
+	gdb-multiarch fwcalc -ex 'target remote :1234' -ex 'layout src'
+
 clean:
 	rm -f $(EXEFILES) $(OBJFILES) $(DEPFILES)
 
-.PHONY: all clean test disassemble
+.PHONY: all clean test disassemble qemu-debug-m0 gdb-debug-m0
