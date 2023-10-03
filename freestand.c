@@ -2,7 +2,7 @@
 
 int isdigit(int c)
 {
-    return c >= 0 && c <= '9';
+    return c >= '0' && c <= '9';
 }
 
 int isspace(int c)
@@ -19,6 +19,7 @@ void *memcpy(void *d, void const *s, size_t n)
     return d;
 }
 
+#ifndef __ARM_ARCH_6M__
 void *memset(void *d, int v, size_t n)
 {
     unsigned char *dc = (unsigned char *)d;
@@ -26,6 +27,7 @@ void *memset(void *d, int v, size_t n)
         dc[i] = (unsigned char)v;
     return d;
 }
+#endif
 
 char *strchr(char const *chars, int ch)
 {
