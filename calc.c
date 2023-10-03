@@ -39,17 +39,20 @@ void format_result(N value, int err)
     }
 }
 
-static char const * const valid_operators = "+-*/()N";
-static char const * const valid_operators_noparen = "+-*/N";
+static char const * const valid_operators = "+-*/%()N";
+static char const * const valid_operators_noparen = "+-*/%N";
 static char const * const unary_ops = "N";
 
-static N parse_digits(char const *s)
+static N parse_digits(char const *s, int *err)
 {
     N value = 0;
     int neg = (*s == '-');
     s += neg;
     while (isdigit(*s)) {
-        value *= 10;
+        N old_value = value;
+        value = (value + 0U) * 10U;
+        if ((value + 0U) < (old_value + 0U))
+            *err = 1;
         value += *s - '0';
         ++s;
     }
@@ -62,7 +65,7 @@ static int precedence_from_op(int op)
 {
     if (op == '+' || op == '-')
         return 1;
-    if (op == '*' || op == '/')
+    if (op == '*' || op == '/' || op == '%')
         return 2;
     if (op == 'N')
         return 3;
@@ -77,7 +80,7 @@ static int precedence_is_higher(int op1, int op2)
 
 static token *pop_token_list(token_list *list)
 {
-    return &list->tokens[--list->count];
+    return list->count ? &list->tokens[--list->count] : 0;
 }
 
 static token *peek_token_list(token_list const *list)
@@ -122,6 +125,9 @@ static token_list tokenize(char const *st, char const *en)
     token_list result = {};
     initial_tokenizer_list(&result, &capacity);
 
+    // Clear the error flag every time we start all over
+    calc_err = 0;
+
     while (st < en) {
         if (isspace(*st)) {
             ++st;
@@ -133,7 +139,7 @@ static token_list tokenize(char const *st, char const *en)
         // Find out how many consecutive digits exist at the start point
         size_t accepted_digits = strspn(st, "0123456789");
 
-        if (accepted_digits && accepted_digits < 10) {
+        if (accepted_digits) {
             // Parse number
             char n[10];
             // Copy digits into buffer
@@ -143,7 +149,7 @@ static token_list tokenize(char const *st, char const *en)
             // Advance past accepted number
             st += accepted_digits;
             // Parse the null terminated string in the buffer
-            int value = parse_digits(n);
+            int value = parse_digits(n, &calc_err);
             // Add a token to the array
             new_token->data = value;
             new_token->type = 'n';
@@ -245,57 +251,170 @@ static int64_t number_sub(N const *lhs_val, N const *rhs_val)
     return *lhs_val - *rhs_val;
 }
 
-static int64_t number_mul(N const *lhs_val, N const *rhs_val, 
-    uint8_t use_signed)
+// static int64_t number_mul(uint64_t const *lhs_val, uint64_t *rhs_val)
+// {
+//     //     +---+---+---+---+
+//     //     | d | c | b | a |
+//     //     +---+---+---+---+
+//     //     +---+---+---+---+
+//     //   x | h | g | f | e |
+//     //     +---+---+---+---+
+//     //    
+//     //     +---+---+---+---+
+//     //     | de| ce| be| ae|
+//     //     |<ce|<be|<ae|  0|
+//     //     | fc| fb| fa|  0|
+//     //     |<fb|<fa|  0|  0|
+//     //     | gb| ga|  0|  0|
+//     //     |<ga|  0|  0|  0|
+//     //     | ha|  0|  0|  0|
+//     //     +---+---+---+---+
+
+//     uint32_t n;
+//     n = *lhs_val;
+//     uint16_t lhs_w0 = (uint16_t)n;
+//     uint16_t lhs_w1 = (uint16_t)(n >> 16);
+//     n = *lhs_val >> 32;
+//     uint16_t lhs_w2 = (uint16_t)n;
+//     uint16_t lhs_w3 = (uint16_t)(n >> 16);
+//     n = *rhs_val;
+//     uint16_t rhs_w0 = (uint16_t)n;
+//     uint16_t rhs_w1 = (uint16_t)(n >> 16);
+//     n = *rhs_val >> 32;
+//     uint16_t rhs_w2 = (uint16_t)n;
+//     uint16_t rhs_w3 = (uint16_t)(n >> 16);
+
+//     uint32_t total[2] = {};
+//     uint32_t oldv, newv, c;
+
+//     oldv = total[0];
+//     newv = oldv + lhs_w0 * rhs_w0;
+//     c = newv < oldv;
+//     total[0] = newv;
+
+//     oldv = total[1];
+//     newv = oldv + lhs_w2 * rhs_w0 + c;
+//     c = newv < oldv;
+//     oldv = newv;
+//     newv = oldv + lhs_w0 * rhs_w2 + c;
+//     c = newv < oldv;
+//     total[1] = newv;
+
+//     oldv = total[0];
+// }
+
+static int64_t number_mul(N const *lhs_val, N const *rhs_val)
 {
 #ifndef BIG_UC
-    unsigned char const *lhs_bytes = (unsigned char const *)lhs_val;
-    unsigned char const *rhs_bytes = (unsigned char const *)rhs_val;
+    _Alignas(sizeof(N)) uint16_t lhs_shorts[sizeof(N)/sizeof(uint16_t)];
+    _Alignas(sizeof(N)) uint16_t rhs_shorts[sizeof(N)/sizeof(uint16_t)];
 
-    N total = 0;
-    unsigned char *total_bytes = (unsigned char *)&total;
+    __builtin_memcpy(lhs_shorts, lhs_val, sizeof(lhs_shorts));
+    __builtin_memcpy(rhs_shorts, rhs_val, sizeof(rhs_shorts));
 
-    // Convert 0/1 to all zeros or all ones
-    use_signed = -use_signed;
+    _Alignas(sizeof(N)) uint16_t total_shorts[sizeof(N)/sizeof(uint16_t)] = {};
 
-    // Do it like elementary school, in 8x8=16 bit chunks
-    for (uint8_t bp = 0; bp < sizeof(N); ++bp) {
-        for (uint8_t tp = 0; tp < sizeof(N); ++tp) {
-            uint8_t p = bp + tp;
-            if (p >= sizeof(total))
+    // Do it like elementary school, in 16x16=32 bit chunks
+    for (uint8_t bpl = 0; bpl < sizeof(N); bpl += sizeof(uint16_t)) {
+        for (uint8_t tpl = 0; tpl < sizeof(N); tpl += sizeof(uint16_t)) {
+            unsigned bp = bpl >> 1;
+            unsigned tp = tpl >> 1;
+            unsigned p = bp + tp;
+            if (p >= (sizeof(total_shorts) >> 1))
                 break;
-            uint16_t sub_product = lhs_bytes[tp] * rhs_bytes[bp];
-            uint8_t oldv = total_bytes[p];
-            uint8_t newv = oldv + (sub_product & 0xFF);
-            uint8_t c = newv < oldv;
-            ++p;
-            oldv = total_bytes[p];
-            newv = oldv + (sub_product >> 8) + c;
-            total_bytes[p] = newv;
-            ++p;
-            uint8_t sign_extend = use_signed & -(sub_product >> 15);
-            for (c = newv < oldv; (c || sign_extend) && 
-                    p < sizeof(total); ++p) {
-                oldv = total_bytes[p];
-                newv = oldv + sign_extend + c;
+            uint32_t sub_product = lhs_shorts[tp] * rhs_shorts[bp];
+            if (!sub_product)
+                continue;
+            assert(p < sizeof(total_shorts)/sizeof(*total_shorts));
+            uint16_t oldv = total_shorts[p];
+            uint16_t newv = oldv + (sub_product & 0xFFFF);
+            uint16_t c = newv < oldv;
+            total_shorts[p++] = newv;
+            if (p >= sizeof(total_shorts)/sizeof(*total_shorts))
+                continue;
+            assert(p < sizeof(total_shorts)/sizeof(*total_shorts));
+            oldv = total_shorts[p];
+            newv = oldv + (sub_product >> 16) + c;
+            c = newv < oldv;
+            assert(p < sizeof(total_shorts)/sizeof(*total_shorts));
+            total_shorts[p++] = newv;
+            while (c && p < (sizeof(total_shorts) >> 1)) {
+                assert(p < sizeof(total_shorts)/sizeof(*total_shorts));
+                oldv = total_shorts[p];
+                newv = oldv + c;
                 c = newv < oldv;
-                total_bytes[p] = newv;
+                assert(p < sizeof(total_shorts)/sizeof(*total_shorts));
+                total_shorts[p++] = newv;
             }
         }
     }
+    N total;
+    __builtin_memcpy(&total, total_shorts, sizeof(total));
     return total;
 #else
     return *lhs_val * *rhs_val;
 #endif
 }
 
-static int64_t number_div(N const *lhs_val, N const *rhs_val)
+// typedef struct double_N_tag {
+//     N part[2];
+// } double_N;
+
+// static double_N number_mul_ext(N const *lhs_val, N const *rhs_val)
+// {
+// #ifndef BIG_UC
+//     unsigned char const *lhs_bytes = (unsigned char const *)lhs_val;
+//     unsigned char const *rhs_bytes = (unsigned char const *)rhs_val;
+
+//     uint8_t lhs_sign = *lhs_val >> 31;
+//     uint8_t rhs_sign = *rhs_val >> 31;
+//     uint8_t tot_sign = lhs_sign ^ rhs_sign;
+
+//     double_N total = {};
+//     unsigned char *total_bytes = (unsigned char *)total.part;
+
+//     // Do it like elementary school, in 8x8=16 bit chunks
+//     for (uint8_t bp = 0; bp < sizeof(N); ++bp) {
+//         for (uint8_t tp = 0; tp < sizeof(N); ++tp) {
+//             uint8_t p = bp + tp;
+//             if (p >= sizeof(total))
+//                 break;
+//             uint8_t lhs_byte = lhs_bytes[tp];
+//             uint8_t rhs_byte = rhs_bytes[bp];
+//             uint16_t sub_product = lhs_byte * rhs_byte;
+//             if (!sub_product)
+//                 continue;
+//             uint8_t oldv = total_bytes[p];
+//             uint8_t newv = oldv + (sub_product & 0xFF);
+//             uint8_t c = newv < oldv;
+//             total_bytes[p] = newv;
+//             ++p;
+//             oldv = total_bytes[p];
+//             newv = oldv + (sub_product >> 8) + c;
+//             total_bytes[p] = newv;
+//             ++p;
+//             uint8_t ext = -tot_sign & (tp == sizeof(N)-1 && bp == sizeof(N)-1);
+//             for (c = newv < oldv; c && p < sizeof(total); ++p) {
+//                 oldv = total_bytes[p];
+//                 newv = oldv + ext + c;
+//                 c = newv < oldv;
+//                 total_bytes[p] = newv;
+//             }
+//         }
+//     }
+//     return total;
+// #else
+//     return *lhs_val * *rhs_val;
+// #endif
+// }
+
+static int64_t number_div(N const *lhs_val, N const *rhs_val, int mod)
 {
     if (*rhs_val != 0) {
         divmod result = signed_divmod(
             *lhs_val, *rhs_val);
         if (!result.err) {
-            return result.quot;
+            return mod ? result.rem : result.quot;
         } else {
             calc_err = 1;
         }
@@ -313,7 +432,7 @@ static N execute_rpn(token_list const *rpn_tokens, int *err)
     size_t execution_stack_capacity = 4;
     initial_execution_list(&execution_stack, &execution_stack_capacity);
 
-    for (size_t i = 0; i < rpn_tokens->count; ++i) {
+    for (size_t i = 0; i < rpn_tokens->count && !*err; ++i) {
         token *t = rpn_tokens->tokens + i;
         if (t->type == 'n') {
             token *pushed_token = push_token_list(
@@ -323,9 +442,17 @@ static N execute_rpn(token_list const *rpn_tokens, int *err)
             token *rhs_val = pop_token_list(&execution_stack);
             token *lhs_val = 0;
             
-            if (!strchr(unary_ops, t->data))
+            if (!strchr(unary_ops, t->data)) {
                 lhs_val = pop_token_list(&execution_stack);
-
+                if (!lhs_val) {
+                    *err = 1;
+                    continue;
+                }
+            }
+            if (!rhs_val) {
+                *err = 1;
+                continue;
+            }
             N value;
             switch ((char)t->data) {
                 case '+':
@@ -335,15 +462,25 @@ static N execute_rpn(token_list const *rpn_tokens, int *err)
                     value = number_sub(&lhs_val->data, &rhs_val->data);
                     break;
                 case '*':
-                    value = number_mul(&lhs_val->data, &rhs_val->data, 1);
+                    value = number_mul(&lhs_val->data, &rhs_val->data);
                     break;
                 case '/':
-                    value = number_div(&lhs_val->data, &rhs_val->data);
+                    value = number_div(&lhs_val->data, &rhs_val->data, 0);
                     break;
-            
+                case '%':
+                    value = number_div(&lhs_val->data, &rhs_val->data, 1);
+                    break;
                 case 'N':
                     value = -rhs_val->data;
-                    break;                    
+                    break;
+                case '(':   // fall through
+                case ')':
+                    continue;
+                default:
+                    assert(!"Should never happen");
+                    *err = 1;
+                    continue;
+
             }
 
             token *sub = push_token_list(
@@ -406,14 +543,29 @@ int main(int argc, char const * const * argv)
 
         token_list infix_tokens = tokenize(buffer, buffer + buffer_count);
 
+        // if (infix_tokens.err) {
+        //     calc_err = 1;
+        //     continue;
+        // }
+
         dump_token_list(&infix_tokens);
 
         token_list rpn_tokens = shunting_yard(&infix_tokens);
+
+        // if (rpn_tokens.err) {
+        //     calc_err = 1;
+        //     continue;
+        // }
 
         dump_token_list(&rpn_tokens);
 
         int err;
         N result = execute_rpn(&rpn_tokens, &err);
+
+        // if (err) {
+        //     calc_err = 1;
+        //     continue;
+        // }
 
         show_result(result, err);
 
