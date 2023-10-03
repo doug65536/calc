@@ -12,21 +12,22 @@ all: teststatic testdynamic fwcalc
 
 # $(1): executable name
 # $(2): source name
+# $(3): extension
 # echo Compiling $$@ from $$^ >&2
-define compile_c=
+define compile_ext=
 ifeq ($(VERBOSE),1)
-$$(info called compile_c $(1) $(2))
+$$(info called compile_ext $(1) $(2) $(3))
 endif
-$(1)-$$(patsubst %.c,%.o,$(2)): $(2)
+$(1)-$$(patsubst %.$(3),%.o,$(2)): $(2)
 	$$(CC) -o $$@ \
 		$$(CFLAGS) $(DEPFLAGS) \
-		-MF $(1)-$$(patsubst %.c,%.d,$(2)) \
+		-MF $(1)-$$(patsubst %.$(3),%.d,$(2)) \
 		-c $$<
 ifeq ($(VERBOSE),1)
-$$(info Generated compile $(1)-$$(patsubst %.c,%.o,$(2)): $(2))
+$$(info Generated compile $(1)-$$(patsubst %.$(3),%.o,$(2)): $(2))
 endif
-OBJFILES += $(1)-$$(patsubst %.c,%.o,$(2))
-DEPFILES += $(1)-$$(patsubst %.c,%.d,$(2))
+OBJFILES += $(1)-$$(patsubst %.$(3),%.o,$(2))
+DEPFILES += $(1)-$$(patsubst %.$(3),%.d,$(2))
 endef
 
 # $(1): name
@@ -37,12 +38,17 @@ ifeq ($(VERBOSE),1)
 $$(info called compile_exec $(1) $(2))
 endif
 $$(foreach src,$$(filter %.c,$$($(1)_SRCS)),$$(eval $$(call \
-	compile_c,$(2),$$(src))))
+	compile_ext,$(2),$$(src),c)))
+$$(foreach src,$$(filter %.S,$$($(1)_SRCS)),$$(eval $$(call \
+	compile_ext,$(2),$$(src),S)))
 
-$(2): $$(patsubst %.c,$$(call tolower,$(1))-%.o,$$($(1)_SRCS))
+$(2): $$(patsubst %.c,$$(call tolower,$(1))-%.o,$$(filter %.c,$$($(1)_SRCS))) \
+		$$(patsubst %.S,$$(call tolower,$(1))-%.o,$$(filter %.S,$$($(1)_SRCS)))
 	$$(CC) -o $$@ $$(CFLAGS) $$^ $$(LDFLAGS)
 ifeq ($(VERBOSE),1)
-$$(info Generated link $(2): $$(patsubst %.c,$$(call tolower,$(1))-%.o,$$($(1)_SRCS)))
+$$(info Generated link $(2): \
+	$$(patsubst %.c,$$(call tolower,$(1))-%.o,$$(filter %.c,$$($(1)_SRCS))) \
+	patsubst %.S,$$(call tolower,$(1))-%.o,$$(filter %.S,$$($(1)_SRCS))))
 endif
 EXEFILES += $(2)
 endef
@@ -74,7 +80,7 @@ endef
 
 TESTDYNAMIC_SRCS = calc.c freestand.c io.c dynamicmem.c
 TESTSTATIC_SRCS = calc.c freestand.c io.c staticmem.c
-FWCALC_SRCS = calc.c freestand.c seg7.c keyb.c staticmem.c
+FWCALC_SRCS = crt0-cortex-m0.S calc.c freestand.c seg7.c keyb.c staticmem.c
 
 LISTS = testdynamic teststatic fwcalc
 
@@ -95,10 +101,13 @@ $(eval $(call adjvar,fwcalc,-nostdlib,CFLAGS,+=))
 $(eval $(call adjvar,fwcalc,-mcpu=cortex-m0,CFLAGS,+=))
 ifeq ($(USE_LIBGCC),1)
 $(eval $(call adjvar,fwcalc,$$(ARM_LIBGCC),LDFLAGS,+=))
-$(eval $(call adjvar,fwcalc,$$(LINKER_SCRIPT_OPTION),LDFLAGS,+=))
 $(eval $(call adjvar,fwcalc,-DHAVE_LIBGCC=1,CFLAGS,+=))
+$(eval $(call adjvar,fwcalc,-DBIG_UC=1,CFLAGS,+=))
 endif
+$(eval $(call adjvar,fwcalc,$$(LINKER_SCRIPT_OPTION),LDFLAGS,+=))
 $(eval $(call adjvar,fwcalc,$(ARM_CC),CC,=))
+$(eval $(call adjvar,testdynamic,-fsanitize=address,CFLAGS,+=))
+$(eval $(call adjvar,teststatic,-fsanitize=address,CFLAGS,+=))
 
 $(foreach list,$(LISTS),$(eval $(call \
 	compile_exec,$(call toupper,$(list)),$(list))))
