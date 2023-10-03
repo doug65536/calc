@@ -1,0 +1,23 @@
+name: C/C++ CI for calculator firmware
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: deps
+      run: |
+        sudo apt update
+        sudo apt install -y gcc-arm-none-eabi binutils-arm-none-eabi
+    - name: make
+      run: make
+    - name: make test
+      run: make test
