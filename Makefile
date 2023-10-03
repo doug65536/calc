@@ -11,6 +11,12 @@ EXEFILES =
 all: teststatic testdynamic fwcalc
 
 # $(1): executable name
+# $(2): extension
+flags_from_ext = $(if $(filter $(2),cc),$($(1)_CXXFLAGS), \
+	$(if $(filter $(2),c),$($(1)_CFLAGS), \
+	$(if $(filter $(2),S),$($(1)_CFLAGS),)))
+
+# $(1): executable name
 # $(2): source name
 # $(3): extension
 # echo Compiling $$@ from $$^ >&2
@@ -20,7 +26,9 @@ $$(info called compile_ext $(1) $(2) $(3))
 endif
 $(1)-$$(patsubst %.$(3),%.o,$(2)): $(2)
 	$$(CC) -o $$@ \
-		$$(CFLAGS) $(DEPFLAGS) \
+		$$(CFLAGS) \
+		$$(call flags_from_ext,$$(call toupper,$(1)),$(3)) \
+		$$(DEPFLAGS) \
 		-MF $(1)-$$(patsubst %.$(3),%.d,$(2)) \
 		-c $$<
 ifeq ($(VERBOSE),1)
@@ -42,13 +50,13 @@ $$(foreach src,$$(filter %.c,$$($(1)_SRCS)),$$(eval $$(call \
 $$(foreach src,$$(filter %.S,$$($(1)_SRCS)),$$(eval $$(call \
 	compile_ext,$(2),$$(src),S)))
 
-$(2): $$(patsubst %.c,$$(call tolower,$(1))-%.o,$$(filter %.c,$$($(1)_SRCS))) \
-		$$(patsubst %.S,$$(call tolower,$(1))-%.o,$$(filter %.S,$$($(1)_SRCS)))
-	$$(CC) -o $$@ $$(CFLAGS) $$^ $$(LDFLAGS)
+$(2): $$(patsubst %.c,$(2)-%.o,$$(filter %.c,$$($(1)_SRCS))) \
+		$$(patsubst %.S,$(2)-%.o,$$(filter %.S,$$($(1)_SRCS)))
+	$$(CC) -o $$@ $$(CFLAGS) $$($(1)_CFLAGS) $$^ $$(LDFLAGS) $$($(1)_LDFLAGS)
 ifeq ($(VERBOSE),1)
 $$(info Generated link $(2): \
-	$$(patsubst %.c,$$(call tolower,$(1))-%.o,$$(filter %.c,$$($(1)_SRCS))) \
-	patsubst %.S,$$(call tolower,$(1))-%.o,$$(filter %.S,$$($(1)_SRCS))))
+	$$(patsubst %.c,$(2)-%.o,$$(filter %.c,$$($(1)_SRCS))) \
+	$$(patsubst %.S,$(2)-%.o,$$(filter %.S,$$($(1)_SRCS))))
 endif
 EXEFILES += $(2)
 endef
@@ -78,6 +86,14 @@ $$(foreach src,$$(filter %.c,$$($$(call toupper,$(1))_SRCS)),$$(eval $$(call \
 $(1): $(3) $(4) $(2)
 endef
 
+# $(1): listname
+# $(2): flags
+# $(3): varname
+# $(4): operator
+define adjvars=
+$$(foreach flag,$$(eval $$(call adjvar $(1),$(flag),$(3),$(4))),$(2))
+endef
+
 TESTDYNAMIC_SRCS = calc.c freestand.c io.c dynamicmem.c
 TESTSTATIC_SRCS = calc.c freestand.c io.c staticmem.c
 FWCALC_SRCS = crt0-cortex-m0.S calc.c freestand.c seg7.c keyb.c staticmem.c
@@ -96,22 +112,35 @@ endif
 
 LINKER_SCRIPT_OPTION = -Wl,-Tcortex-m0.ld
 
-$(eval $(call adjvar,fwcalc,-ffreestanding,CFLAGS,+=))
-$(eval $(call adjvar,fwcalc,-Dmemcpy=__builtin_memcpy,CFLAGS,+=))
-$(eval $(call adjvar,fwcalc,-nostdlib,CFLAGS,+=))
-$(eval $(call adjvar,fwcalc,-mcpu=cortex-m0,CFLAGS,+=))
-ifeq ($(USE_LIBGCC),1)
-$(eval $(call adjvar,fwcalc,$$(ARM_LIBGCC),LDFLAGS,+=))
-$(eval $(call adjvar,fwcalc,-DHAVE_LIBGCC=1,CFLAGS,+=))
-$(eval $(call adjvar,fwcalc,-DBIG_UC=1,CFLAGS,+=))
-endif
-$(eval $(call adjvar,fwcalc,$$(LINKER_SCRIPT_OPTION),LDFLAGS,+=))
-$(eval $(call adjvar,fwcalc,$(ARM_CC),CC,=))
-$(eval $(call adjvar,testdynamic,-fsanitize=address,CFLAGS,+=))
-$(eval $(call adjvar,teststatic,-fsanitize=address,CFLAGS,+=))
+FWCALC_CFLAGS = -ffreestanding \
+	-Dmemcpy=__builtin_memcpy \
+	-nostdlib \
+	-mcpu=cortex-m0
 
-$(foreach list,$(LISTS),$(eval $(call \
-	compile_exec,$(call toupper,$(list)),$(list))))
+FWCALC_LDFLAGS = $(LINKER_SCRIPT_OPTION)
+
+ifeq ($(USE_LIBGCC),1)
+FWCALC_CFLAGS += -DBIG_UC=1 \
+	-DHAVE_LIBGCC=1
+FWCALC_LDFLAGS += $(ARM_LIBGCC)
+endif
+
+# $(eval $(call adjvar,fwcalc,-ffreestanding,CFLAGS,+=))
+# $(eval $(call adjvar,fwcalc,-Dmemcpy=__builtin_memcpy,CFLAGS,+=))
+# $(eval $(call adjvar,fwcalc,-nostdlib,CFLAGS,+=))
+# $(eval $(call adjvar,fwcalc,-mcpu=cortex-m0,CFLAGS,+=))
+# ifeq ($(USE_LIBGCC),1)
+# $(eval $(call adjvar,fwcalc,$$(ARM_LIBGCC),LDFLAGS,+=))
+# $(eval $(call adjvar,fwcalc,-DHAVE_LIBGCC=1,CFLAGS,+=))
+# $(eval $(call adjvar,fwcalc,-DBIG_UC=1,CFLAGS,+=))
+# endif
+# $(eval $(call adjvar,fwcalc,$$(LINKER_SCRIPT_OPTION),LDFLAGS,+=))
+# $(eval $(call adjvar,testdynamic,-fsanitize=address,CFLAGS,+=))
+# $(eval $(call adjvar,teststatic,-fsanitize=address,CFLAGS,+=))
+
+$(eval $(call adjvar,fwcalc,$(ARM_CC),CC,=))
+
+$(foreach list,$(LISTS),$(eval $(call compile_exec,$(call toupper,$(list)),$(list))))
 
 -include $(DEPFILES)
 
