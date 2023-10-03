@@ -31,7 +31,9 @@ static int read_keyboard_iter(void)
     for (int row = 0; row < 4; ++row) {
         int bits = read_keyboard_row(row);
 
-        for (unsigned mask = 1, bit = 0; mask < 0x10; (mask <<= 1), ++bit) {
+        for (unsigned mask = 1, bit = 0; 
+                bits && mask < 0x10;
+                (mask <<= 1), ++bit) {
             if (bits & mask) {
                 if (press)
                     return 0;
